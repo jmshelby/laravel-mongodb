@@ -34,6 +34,13 @@ class Builder extends QueryBuilder {
     public $timeout;
 
     /**
+     * Aggregators, or Aggregation Operator Classes, * sorted somehow *
+     *
+     * @var array
+     */
+    public $aggregators;
+
+    /**
      * All of the available clause operators.
      *
      * @var array
@@ -975,6 +982,12 @@ class Builder extends QueryBuilder {
     {
         return $where['sql'];
     }
+
+	public function registerAggregator(AggregatorInterface $aggregator)
+	{
+		$this->aggregators[] = $aggregator;
+		return $this;
+	}
 
     /**
      * Handle dynamic method calls into the method.
