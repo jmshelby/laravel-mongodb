@@ -989,6 +989,22 @@ class Builder extends QueryBuilder {
 		return $this;
 	}
 
+	public function getSortedAggregators()
+	{
+		// Get all aggregators
+
+		// Get all their prioritys
+
+		// Sort them by priority
+	}
+
+	public function applyAggregators(&$pipeline)
+	{
+		// Get sorted aggregators
+
+		// Call each one
+	}
+
     /**
      * Handle dynamic method calls into the method.
      *
