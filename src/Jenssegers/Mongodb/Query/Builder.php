@@ -139,86 +139,25 @@ class Builder extends QueryBuilder {
         // Drop all columns if * is present, MongoDB does not work this way.
         if (in_array('*', $this->columns)) $this->columns = array();
 
-        // Compile wheres
-        $wheres = $this->compileWheres();
-
         // Use MongoDB's aggregation framework when using grouping or aggregation functions.
-        if ($this->groups or $this->aggregate)
+        if ($this->hasAggregations())
         {
-            $group = array();
-
-            // Add grouping columns to the $group part of the aggregation pipeline.
-            if ($this->groups)
-            {
-                foreach ($this->groups as $column)
-                {
-                    $group['_id'][$column] = '$' . $column;
-
-                    // When grouping, also add the $last operator to each grouped field,
-                    // this mimics MySQL's behaviour a bit.
-                    $group[$column] = array('$last' => '$' . $column);
-                }
-            }
-            else
-            {
-                // If we don't use grouping, set the _id to null to prepare the pipeline for
-                // other aggregation functions.
-                $group['_id'] = null;
-            }
-
-            // Add aggregation functions to the $group part of the aggregation pipeline,
-            // these may override previous aggregations.
-            if ($this->aggregate)
-            {
-                $function = $this->aggregate['function'];
-
-                foreach ($this->aggregate['columns'] as $column)
-                {
-                    // Translate count into sum.
-                    if ($function == 'count')
-                    {
-                        $group['aggregate'] = array('$sum' => 1);
-                    }
-                    // Pass other functions directly.
-                    else
-                    {
-                        $group['aggregate'] = array('$' . $function => '$' . $column);
-                    }
-                }
-            }
-
-            // If no aggregation functions are used, we add the additional select columns
-            // to the pipeline here, aggregating them by $last.
-            else
-            {
-                foreach ($this->columns as $column)
-                {
-                    $key = str_replace('.', '_', $column);
-
-                    $group[$key] = array('$last' => '$' . $column);
-                }
-            }
-
-            // Build the aggregation pipeline.
-            $pipeline = array();
-            if ($wheres) $pipeline[] = array('$match' => $wheres);
-            $pipeline[] = array('$group' => $group);
-
-            // Apply order and limit
-            if ($this->orders)      $pipeline[] = array('$sort' => $this->orders);
-            if ($this->offset)      $pipeline[] = array('$skip' => $this->offset);
-            if ($this->limit)       $pipeline[] = array('$limit' => $this->limit);
-            if ($this->projections) $pipeline[] = array('$project' => $this->projections);
+			// Compile pipeline operations
+			$pipeline = $this->compileAggregatePipeline();
 
             // Execute aggregation
+			// TODO -- allow option for aggregateCursor
             $results = $this->collection->aggregate($pipeline);
 
             // Return results
             return $results['result'];
-        }
+		}
+
+        // Compile wheres
+        $wheres = $this->compileWheres();
 
         // Distinct query
-        else if ($this->distinct)
+        if ($this->distinct)
         {
             // Return distinct results directly
             $column = isset($this->columns[0]) ? $this->columns[0] : '_id';
@@ -256,9 +195,96 @@ class Builder extends QueryBuilder {
             if ($this->limit)   $cursor->limit($this->limit);
 
             // Return results as an array with numeric keys
+			// TODO -- allow option to return cursor
             return iterator_to_array($cursor, false);
         }
     }
+
+	// TODO -- return wether the query has predicates that require an aggregation call to fulfill
+	public function hasAggregations()
+	{
+        return ($this->groups or $this->aggregate);
+	}
+
+    public function compileAggregatePipeline()
+	{
+        // Compile wheres
+        $wheres = $this->compileWheres();
+
+        $group = array();
+
+        // Add grouping columns to the $group part of the aggregation pipeline.
+        if ($this->groups)
+        {
+            foreach ($this->groups as $column)
+            {
+                $group['_id'][$column] = '$' . $column;
+
+                // When grouping, also add the $last operator to each grouped field,
+                // this mimics MySQL's behaviour a bit.
+                $group[$column] = array('$last' => '$' . $column);
+            }
+        }
+        else
+        {
+            // If we don't use grouping, set the _id to null to prepare the pipeline for
+            // other aggregation functions.
+            $group['_id'] = null;
+        }
+
+        // Add aggregation functions to the $group part of the aggregation pipeline,
+        // these may override previous aggregations.
+        if ($this->aggregate)
+        {
+            $function = $this->aggregate['function'];
+
+            foreach ($this->aggregate['columns'] as $column)
+            {
+                // Translate count into sum.
+                if ($function == 'count')
+                {
+                    $group['aggregate'] = array('$sum' => 1);
+                }
+                // Pass other functions directly.
+                else
+                {
+                    $group['aggregate'] = array('$' . $function => '$' . $column);
+                }
+            }
+        }
+
+        // If no aggregation functions are used, we add the additional select columns
+        // to the pipeline here, aggregating them by $last.
+        else
+        {
+            foreach ($this->columns as $column)
+            {
+                $key = str_replace('.', '_', $column);
+
+                $group[$key] = array('$last' => '$' . $column);
+            }
+        }
+
+        // Build the aggregation pipeline.
+        $pipeline = array();
+
+		// Apply the high priority operators
+
+        if ($wheres) $pipeline[] = array('$match' => $wheres);
+        $pipeline[] = array('$group' => $group);
+
+        // Apply order and limit
+        if ($this->orders)      $pipeline[] = array('$sort' => $this->orders);
+        if ($this->offset)      $pipeline[] = array('$skip' => $this->offset);
+        if ($this->limit)       $pipeline[] = array('$limit' => $this->limit);
+        if ($this->projections) $pipeline[] = array('$project' => $this->projections);
+
+		// Apply the tail operators
+
+		return $pipeline;
+	}
+
+
 
     /**
      * Generate the unique cache key for the current query.
