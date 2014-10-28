@@ -762,7 +762,7 @@ class Builder extends QueryBuilder {
      *
      * @return array
      */
-    protected function compileWheres()
+    public function compileWheres()
     {
         // The wheres to compile.
         $wheres = $this->wheres ?: array();
